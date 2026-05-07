@@ -665,7 +665,7 @@ jobs:
             cd "$KERNEL_ROOT"
             cd ./common
             wget "https://raw.githubusercontent.com/Goldzxcbug/Droidspaces_Kernel_patch/refs/heads/main/NTsync/ntsync_base.patch"
-            wget "https://raw.githubusercontent.com/Goldzxcbug/Droidspaces_Kernel_patch/refs/heads/main/NTsync/ntsync_compat_android15-6.6.patch"
+            wget "https://raw.githubusercontent.com/Goldzxcbug/Droidspaces_Kernel_patch/refs/heads/main/NTsync/ntsync_compat_android14-6.1.patch"
             patch -p1 < 'ntsync_base.patch'
             patch -p1 < 'ntsync_compat_android15-6.6.patch'            
             cd ../
