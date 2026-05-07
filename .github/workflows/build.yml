@@ -20,7 +20,7 @@ on:
       os_patch_level:
         required: true
         type: string
-- name: 注入NTsync内核配置
+ name: 注入NTsync内核配置
         run: |
             cd "$KERNEL_ROOT"
             cd ./common
