@@ -626,6 +626,20 @@ jobs:
           SUB_LEVEL: ${{ inputs.sub_level }}
         run: bash "$GITHUB_WORKSPACE/scripts/susfs_fixes/apply.sh"
 
+      - name: 修复 SUSFS fs/super.c 声明冲突
+        if: inputs.enable_kernelsu && inputs.enable_susfs
+        working-directory: ${{ env.KERNEL_ROOT }}/common
+        run: |
+          FILE="fs/super.c"
+          if grep -qF "susfs_is_sdcard_android_data_not_decrypted" "$FILE"; then
+            if ! grep -qF "#include <linux/susfs_def.h>" "$FILE"; then
+              sed -i '/#include <linux\/fs_context.h>/a #ifdef CONFIG_KSU_SUSFS\n#include <linux/susfs_def.h>\n#endif // CONFIG_KSU_SUSFS' "$FILE"
+            fi
+            if ! grep -qF "extern bool susfs_is_current_ksu_domain(void);" "$FILE"; then
+              sed -i '/^static int thaw_super_locked/i #ifdef CONFIG_KSU_SUSFS_SUS_MOUNT\nextern bool susfs_is_current_ksu_domain(void);\nextern struct static_key_true susfs_is_sdcard_android_data_not_decrypted;\n#endif // CONFIG_KSU_SUSFS_SUS_MOUNT\n' "$FILE"
+            fi
+          fi
+
       - name: 克隆 Droidspaces 补丁仓库
         if: inputs.droidspaces != 'off'
         run: |
