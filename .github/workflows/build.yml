@@ -549,7 +549,7 @@ jobs:
           echo "已恢复 SukiSU kernel_umount_feature_set"
 
       - name: 配置 SukiSU 管理器信息
-        if: inputs.ksu_variant == 'SukiSU' || inputs.ksu_variant == 'SukiSU(40726)' || inputs.ksu_variant == 'SukiSU(40548)'
+        if: inputs.enable_kernelsu && (inputs.ksu_variant == 'SukiSU' || inputs.ksu_variant == 'SukiSU(40726)' || inputs.ksu_variant == 'SukiSU(40548)')
         working-directory: ${{ env.KERNEL_ROOT }}/KernelSU
         run: |
           KBUILD_FILE="./kernel/Kbuild"
