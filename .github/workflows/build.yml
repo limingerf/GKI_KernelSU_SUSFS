@@ -325,7 +325,21 @@ jobs:
             sed -i "s/\"${FORMATTED_BRANCH}\"/\"deprecated\/${FORMATTED_BRANCH}\"/g" $DEFAULT_MANIFEST_PATH
           fi
 
-          $REPO --trace sync -c -j$(nproc --all) --no-tags --fail-fast
+          SYNC_OK=false
+          for ATTEMPT in 1 2 3; do
+            echo "repo sync attempt $ATTEMPT/3"
+            if $REPO --trace sync -c -j$(nproc --all) --no-tags --fail-fast; then
+              SYNC_OK=true
+              break
+            fi
+            echo "repo sync failed; retrying after transient network failure..."
+            rm -rf .repo/project-objects 2>/dev/null || true
+            sleep 10
+          done
+          if [ "$SYNC_OK" != true ]; then
+            echo "repo sync failed after 3 attempts"
+            exit 1
+          fi
           echo "REMOTE_BRANCH=$REMOTE_BRANCH" >> $GITHUB_ENV
 
       - name: 应用 Stock Config 伪装
