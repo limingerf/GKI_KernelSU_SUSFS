@@ -44,6 +44,10 @@ on:
           - Official
           #- Next
         default: ReSukiSU
+      enable_kernelsu:
+        description: "是否集成 KernelSU"
+        type: boolean
+        default: true
 
       # ==================== 可选配置 ====================
       version:
@@ -65,6 +69,10 @@ on:
           - "disabled (关闭)"
           - "enabled (开启)"
           - "patched (开启并修补，尚不支持)"
+      enable_user_ns:
+        description: "启用 User Namespace（CONFIG_USER_NS）"
+        type: boolean
+        default: false
       droidspaces:
         description: "Droidspaces 容器支持 (5.10~6.6: 槽位补丁, 6.12: 开/关)"
         type: choice
@@ -131,10 +139,12 @@ jobs:
   # ==================== 获取管理器 ====================
   # 下载最新的 KernelSU 管理器 APK 和 SUSFS 模块
   get-manager:
+    if: inputs.enable_kernelsu
     uses: ./.github/workflows/get-manager.yml
     secrets: inherit
     with:
       kernelsu_variant: ${{ inputs.kernelsu_variant }}
+      enable_kernelsu: ${{ inputs.enable_kernelsu }}
 
   # ==================== Android 12 - 5.10 构建 ====================
   build-a12-5-10:
@@ -148,6 +158,7 @@ jobs:
       use_zram: ${{ inputs.use_zram }}
       use_bbg: ${{ inputs.use_bbg }}
       use_kpm: ${{ inputs.use_kpm }}
+      enable_user_ns: ${{ inputs.enable_user_ns }}
       use_rekernel: ${{ inputs.use_rekernel }}
       cve_2026_43499_patch: ${{ inputs.cve_2026_43499_patch }}
       cancel_susfs: ${{ inputs.cancel_susfs }}
