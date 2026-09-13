@@ -19,6 +19,10 @@ on:
           - SukiSU(40548)
           - ReSukiSU
         default: ReSukiSU
+      enable_kernelsu:
+        description: "是否集成 KernelSU"
+        type: boolean
+        default: true
       version:
         description: "自定义版本名 (可选)"
         required: false
@@ -37,6 +41,10 @@ on:
           - "disabled (关闭)"
           - "enabled (开启)"
           - "patched (开启并修补，尚不支持)"
+      enable_user_ns:
+        description: "启用 User Namespace（CONFIG_USER_NS）"
+        type: boolean
+        default: false
       droidspaces:
         description: "Droidspaces 容器支持"
         required: false
@@ -93,6 +101,10 @@ on:
       kernelsu_variant:
         required: true
         type: string
+      enable_kernelsu:
+        required: false
+        type: boolean
+        default: true
       version:
         required: false
         type: string
@@ -109,6 +121,10 @@ on:
       use_kpm:
         required: true
         type: string
+      enable_user_ns:
+        required: false
+        type: boolean
+        default: false
       use_rekernel:
         required: false
         type: boolean
@@ -166,11 +182,13 @@ jobs:
       sub_level: ${{ matrix.sub_level }}
       os_patch_level: ${{ matrix.os_patch_level }}
       ksu_variant: ${{ inputs.kernelsu_variant }}
+      enable_kernelsu: ${{ inputs.enable_kernelsu }}
       version: ${{ inputs.version || '' }}
       build_time: ${{ inputs.build_time || '' }}
       use_zram: false
       use_bbg: ${{ inputs.use_bbg }}
       use_kpm: ${{ inputs.use_kpm }}
+      enable_user_ns: ${{ inputs.enable_user_ns }}
       use_rekernel: ${{ inputs.use_rekernel || false }}
       cve_2026_43499_patch: ${{ inputs.cve_2026_43499_patch }}
       supp_op: ${{ inputs.supp_op || false }}
