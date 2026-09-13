@@ -973,6 +973,8 @@ jobs:
       - name: 配置内核选项
         working-directory: ${{ env.KERNEL_ROOT }}
         run: |
+          set -e
+
           if [ "${{ inputs.enable_kernelsu }}" = "true" ]; then
             cat >> "$DEFCONFIG" << 'EOF'
           CONFIG_KSU=y
@@ -983,20 +985,27 @@ jobs:
 
           if [[ "${{ inputs.use_kpm }}" == enabled* ]] || [[ "${{ inputs.use_kpm }}" == patched* ]]; then
             if [ "${{ inputs.enable_kernelsu }}" != "true" ]; then
-              echo "错误: KPM 依赖 KernelSU/KPM，不能在关闭 KernelSU 时启用。" >&2
+              echo "错误: KPM 依赖 KernelSU，不能在关闭 KernelSU 时启用。" >&2
               exit 1
             fi
             if ! grep -RqsE '^[[:space:]]*config[[:space:]]+KPM([[:space:]]|$)' common KernelSU 2>/dev/null; then
-              echo "错误: 已请求启用 KPM，但当前 KernelSU 代码未声明 CONFIG_KPM" >&2
+              echo "错误: 已请求启用 KPM，但当前 KernelSU 代码未声明 CONFIG_KPM。" >&2
               exit 1
             fi
-            echo "CONFIG_KPM=y" >> "$DEFCONFIG"
+            grep -q '^CONFIG_KPM=y$' "$DEFCONFIG" || echo "CONFIG_KPM=y" >> "$DEFCONFIG"
           fi
 
           if [ "${{ inputs.enable_user_ns }}" = "true" ]; then
             if grep -q '^CONFIG_USER_NS=' "$DEFCONFIG"; then
               sed -i 's/^CONFIG_USER_NS=.*/CONFIG_USER_NS=y/' "$DEFCONFIG"
-            elif grep -q '^# CONFIG_USER_NS is not set
+            elif grep -q '^# CONFIG_USER_NS is not set$' "$DEFCONFIG"; then
+              sed -i 's/^# CONFIG_USER_NS is not set$/CONFIG_USER_NS=y/' "$DEFCONFIG"
+            else
+              echo "CONFIG_USER_NS=y" >> "$DEFCONFIG"
+            fi
+            echo "CONFIG_USER_NS=y 已启用"
+          fi
+
           CURRENT_SUB="${{ inputs.sub_level }}"
           if [[ ! "$CURRENT_SUB" =~ ^[0-9]+$ ]]; then
             CURRENT_SUB=99999
@@ -1006,11 +1015,8 @@ jobs:
               echo "CONFIG_KALLSYMS=y"
               echo "CONFIG_KALLSYMS_ALL=y"
             } >> "$DEFCONFIG"
-            # 修复 5.15.74~5.15.137: kallsyms_on_each_symbol 仅在 LIVEPATCH 下编译，导致 ReSukiSU 链接失败
             KALLSYMS_C="./common/kernel/kallsyms.c"
-            if [ -f "$KALLSYMS_C" ] \
-              && grep -qF 'int kallsyms_on_each_symbol' "$KALLSYMS_C" \
-              && grep -qF '#endif /* CONFIG_LIVEPATCH */' "$KALLSYMS_C"; then
+            if [ -f "$KALLSYMS_C" ] && grep -qF 'int kallsyms_on_each_symbol' "$KALLSYMS_C" && grep -qF '#endif /* CONFIG_LIVEPATCH */' "$KALLSYMS_C"; then
               sed -i '/^#ifdef CONFIG_LIVEPATCH$/,/^int kallsyms_on_each_symbol/ { /^#ifdef CONFIG_LIVEPATCH$/d }' "$KALLSYMS_C"
               sed -i '/^int kallsyms_on_each_symbol/,/^#endif \/\* CONFIG_LIVEPATCH \*\// { /^#endif \/\* CONFIG_LIVEPATCH \*\//d }' "$KALLSYMS_C"
               echo "已修复 kallsyms_on_each_symbol 的 LIVEPATCH 编译限制"
