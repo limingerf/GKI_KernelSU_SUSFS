@@ -737,9 +737,13 @@ jobs:
           enable_config_if_defined CONFIG_IP6_NF_NAT
           enable_config_if_defined CONFIG_IP6_NF_TARGET_MASQUERADE
 
-          # tmpfs 的 xattr / POSIX ACL：上游指南列为可选（NixOS 支持）
-          enable_config_if_defined CONFIG_TMPFS_POSIX_ACL
-          enable_config_if_defined CONFIG_TMPFS_XATTR
+          # 注意: 不要在此处添加 CONFIG_TMPFS_XATTR / CONFIG_TMPFS_POSIX_ACL。
+          # 后面的「配置内核选项」步骤已无条件写入这两项；而本步骤对 gki_defconfig
+          # 的改动会被提取成 ksu.fragment 交给 bazel，fragment 中重复的配置项会被
+          # bazel 的 defconfig 校验拒绝，报错形如：
+          #   CONFIG_TMPFS_XATTR: actual 'CONFIG_TMPFS_XATTR=y',
+          #   expected 'CONFIG_TMPFS_XATTR=y\nCONFIG_TMPFS_XATTR=y'
+          # 上游指南把它们列为可选，此仓库已默认启用，无需重复。
 
           # REJECT 目标在不同内核版本上的符号名可能不同，按实际存在的配置启用
           enable_config_if_defined CONFIG_NETFILTER_XT_TARGET_REJECT
