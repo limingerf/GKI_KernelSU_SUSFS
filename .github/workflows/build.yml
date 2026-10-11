@@ -619,6 +619,7 @@ jobs:
 
           # 678 -> 6_7_8, 123 -> 1_2_3, 345 -> 3_4_5
           SLOT_NAME=$(echo "$SLOT" | sed 's/\(.\)/\1_/g; s/_$//')
+          SLOT_FIRST=$(echo "$SLOT" | cut -c1)
           echo "应用 Droidspaces SYSVIPC kABI 修复补丁 (槽位: $SLOT / $SLOT_NAME)..."
           case "$KERNEL_VER" in
             6.12)
@@ -635,6 +636,27 @@ jobs:
           if ! patch -p1 --forward < "$PATCH_FILE"; then
             echo "::warning::SYSVIPC kABI 补丁应用失败，可能已应用或上下文不匹配"
           fi
+
+          # 强制校验 kABI 补丁是否真正落到 include/linux/sched.h。
+          # 这一步不可省略：patch 允许 fuzz，也可能整块失败却只打印 warning，
+          # 而缺少该修复时 task_struct 的 sysvsem/sysvshm 会挤占随机化区，
+          # 结构体布局偏移会让厂商预编译模块拒绝加载并导致设备 bootloop。
+          # 另外 AOSP 已占用 slot 1/2/3（saved_state / dmabuf_info / user_dumpable），
+          # 所以 123 与 345 槽位在当前 6.1 LTS 上已不可用，只有 678 是安全的。
+          case "$KERNEL_VER" in
+            5.10|5.15|6.1|6.6)
+              if ! grep -qF "ANDROID_KABI_USE(${SLOT_FIRST}, struct sysv_sem sysvsem)" include/linux/sched.h; then
+                echo "::error::SYSVIPC kABI 补丁未生效：sched.h 中不存在槽位 ${SLOT_FIRST} 的 sysv_sem 标记"
+                echo "::error::该槽位可能已被 AOSP 占用。当前内核版本请改用 droidspaces=678。"
+                exit 1
+              fi
+              if ! grep -qF "struct sysv_shm sysvshm" include/linux/sched.h; then
+                echo "::error::SYSVIPC kABI 补丁未生效：sched.h 中不存在 sysv_shm 标记"
+                exit 1
+              fi
+              echo "kABI 补丁校验通过：槽位 ${SLOT_NAME} 已写入 include/linux/sched.h"
+              ;;
+          esac
 
           # 5.10 及以下还需要 POSIX_MQUEUE 的 kABI 修复
           if [ "$KERNEL_VER" = "5.10" ]; then
@@ -696,6 +718,12 @@ jobs:
           enable_config CONFIG_PID_NS
           enable_config CONFIG_DEVTMPFS
 
+          # 用户命名空间：上游 GKI 指南列为「可选但推荐」，用于修复容器内
+          # docker 的 unsafe procfs 报错。struct cred 的 user_ns/ucounts 是无条件
+          # 成员，init/Kconfig 中 USER_NS 无 depends on，task_struct 布局不随该选项
+          # 改变，因此无需额外的 ABI padding 补丁，全版本启用是安全的。
+          enable_config_if_defined CONFIG_USER_NS
+
           # 可选: 网络相关配置 (Docker/NAT 模式)
           enable_config_if_defined CONFIG_NETFILTER_XT_MATCH_ADDRTYPE
           enable_config_if_defined CONFIG_NETFILTER_XT_TARGET_LOG
@@ -704,6 +732,14 @@ jobs:
           enable_config_if_defined CONFIG_IP_SET_HASH_IP
           enable_config_if_defined CONFIG_IP_SET_HASH_NET
           enable_config_if_defined CONFIG_NETFILTER_XT_SET
+
+          # IPv6 NAT (NAT66)：上游指南列为可选，缺失时 NAT 模式的容器只能走 IPv4
+          enable_config_if_defined CONFIG_IP6_NF_NAT
+          enable_config_if_defined CONFIG_IP6_NF_TARGET_MASQUERADE
+
+          # tmpfs 的 xattr / POSIX ACL：上游指南列为可选（NixOS 支持）
+          enable_config_if_defined CONFIG_TMPFS_POSIX_ACL
+          enable_config_if_defined CONFIG_TMPFS_XATTR
 
           # REJECT 目标在不同内核版本上的符号名可能不同，按实际存在的配置启用
           enable_config_if_defined CONFIG_NETFILTER_XT_TARGET_REJECT
