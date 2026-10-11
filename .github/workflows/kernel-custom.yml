@@ -20,10 +20,10 @@ on:
           - "6.12"
         default: "5.10"
       os_patch_level:
-        description: "安全补丁级别 (如 2022-01, lts)"
+        description: "安全补丁级别 (如 2024-05、lts；填 lts 或留空=最新 LTS，无对应数据的月份会自动就近匹配)"
         required: true
         type: string
-        default: "2022-01"
+        default: "lts"
 
       # ==================== KernelSU 配置 ====================
       kernelsu_variant:
@@ -123,6 +123,7 @@ jobs:
       android_version: ${{ steps.resolve.outputs.android_version }}
       sub_level: ${{ steps.resolve.outputs.sub_level }}
       kernel_full: ${{ steps.resolve.outputs.kernel_full }}
+      os_patch_level: ${{ steps.resolve.outputs.os_patch_level }}
     steps:
       - name: 检出版本数据
         uses: actions/checkout@v7
@@ -136,11 +137,12 @@ jobs:
           python3 <<'PY'
           import json
           import os
+          import re
           import sys
           from pathlib import Path
 
           kernel_version = os.environ["KERNEL_VERSION"]
-          os_patch_level = os.environ["OS_PATCH_LEVEL"].strip()
+          raw_input = os.environ["OS_PATCH_LEVEL"].strip()
           android_map = {
               "5.10": "android12",
               "5.15": "android13",
@@ -162,20 +164,60 @@ jobs:
           with data_path.open("r", encoding="utf-8") as f:
               data = json.load(f)
 
-          if os_patch_level == "lts":
+          entries = [e for e in (data.get("entries") or []) if e.get("date")]
+          available = sorted(e["date"] for e in entries)
+
+
+          def month_index(date_str):
+              """把 YYYY-MM 换算成可比较的月份序号"""
+              year, month = date_str.split("-")
+              return int(year) * 12 + int(month)
+
+
+          def resolve_by_date(normalized):
+              """先精确匹配；没有对应数据时取月份距离最近的可用日期"""
+              exact = next((e for e in entries if e["date"] == normalized), None)
+              if exact is not None:
+                  return exact, None
+              if not available:
+                  return None, None
+              target = month_index(normalized)
+              # 距离相同时取较新的日期：安全补丁级别偏新比偏旧更安全
+              nearest = min(available, key=lambda d: (abs(month_index(d) - target), -month_index(d)))
+              return next((e for e in entries if e["date"] == nearest), None), nearest
+
+
+          if raw_input.lower() in ("", "lts"):
               kernel_full = data.get("lts")
               if not kernel_full:
                   print(f"::error::{android_version} / {kernel_version} 缺少 LTS 版本数据")
                   sys.exit(1)
+              resolved_patch_level = "lts"
               sub_level = "X"
           else:
-              matched = next(
-                  (entry for entry in data.get("entries", []) if entry.get("date") == os_patch_level),
-                  None,
-              )
-              if matched is None:
-                  print(f"::error::未找到 {android_version} / {kernel_version} / {os_patch_level} 对应的版本数据")
+              # 归一化输入：接受 2026-1、2026-01、2026-01-05、2026/01 等写法
+              matched_input = re.match(r"^(\d{4})[-/.](\d{1,2})", raw_input)
+              if matched_input is None:
+                  print(f"::error::无法解析安全补丁级别 '{raw_input}'，请使用 YYYY-MM（如 2026-03）或 lts。")
+                  print(f"::error::{android_version} / {kernel_version} 可用日期: {', '.join(available)}")
                   sys.exit(1)
+
+              normalized = f"{matched_input.group(1)}-{int(matched_input.group(2)):02d}"
+              matched, nearest = resolve_by_date(normalized)
+
+              if matched is None:
+                  print(f"::error::未找到 {android_version} / {kernel_version} 的版本数据")
+                  print(f"::error::可用日期: {', '.join(available)}")
+                  sys.exit(1)
+
+              if nearest is not None:
+                  print(
+                      f"::warning title=安全补丁级别已就近调整::"
+                      f"{normalized} 在 {android_version} / {kernel_version} 中没有对应数据，"
+                      f"已改用最接近的 {nearest}"
+                  )
+
+              resolved_patch_level = matched["date"]
               kernel_full = matched.get("kernel", "")
               prefix = f"{kernel_version}."
               if not kernel_full.startswith(prefix):
@@ -187,12 +229,16 @@ jobs:
               output.write(f"android_version={android_version}\n")
               output.write(f"sub_level={sub_level}\n")
               output.write(f"kernel_full={kernel_full}\n")
+              output.write(f"os_patch_level={resolved_patch_level}\n")
 
-          print(f"解析结果: {android_version} / {kernel_full}，子版本号: {sub_level}")
+          print(
+              f"解析结果: {android_version} / {kernel_full}，"
+              f"子版本号: {sub_level}，安全补丁级别: {resolved_patch_level}"
+          )
           PY
 
   build-custom-kernel:
-    name: "${{ needs.resolve-version.outputs.kernel_full }}-${{ needs.resolve-version.outputs.android_version }}-${{ inputs.os_patch_level }}"
+    name: "${{ needs.resolve-version.outputs.kernel_full }}-${{ needs.resolve-version.outputs.android_version }}-${{ needs.resolve-version.outputs.os_patch_level }}"
     needs: resolve-version
     uses: ./.github/workflows/build.yml
     secrets: inherit
@@ -200,7 +246,7 @@ jobs:
       android_version: ${{ needs.resolve-version.outputs.android_version }}
       kernel_version: ${{ inputs.kernel_version }}
       sub_level: ${{ needs.resolve-version.outputs.sub_level }}
-      os_patch_level: ${{ inputs.os_patch_level }}
+      os_patch_level: ${{ needs.resolve-version.outputs.os_patch_level }}
       revision: "r1"
       ksu_variant: ${{ inputs.kernelsu_variant }}
       version: ${{ inputs.version || '' }}
